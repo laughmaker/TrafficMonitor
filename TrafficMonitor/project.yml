@@ -1,0 +1,78 @@
+name: TrafficMonitor
+
+options:
+  minimumXcodeGenVersion: 2.46.0
+  createIntermediateGroups: true
+  developmentLanguage: zh-Hans
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    SWIFT_VERSION: "6.0"
+
+targets:
+  TrafficCore:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources/Core
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.TrafficMonitor.Core
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+    dependencies:
+      - sdk: libsqlite3.tbd
+
+  TrafficMonitor:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/App
+    dependencies:
+      - target: TrafficCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.TrafficMonitor
+        PRODUCT_NAME: TrafficMonitor
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: 流量监控
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_NSLocationUsageDescription: TrafficMonitor 仅在本机读取 Wi-Fi 名称，以便按网络统计流量和配额。
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: TrafficMonitor 仅在本机读取 Wi-Fi 名称，以便按网络统计流量和配额。
+        CODE_SIGN_STYLE: Automatic
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.9.2
+
+  TrafficCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/TrafficCoreTests
+    dependencies:
+      - target: TrafficCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.TrafficMonitor.CoreTests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+
+schemes:
+  TrafficMonitor:
+    build:
+      targets:
+        TrafficMonitor: all
+        TrafficCoreTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - TrafficCoreTests
+    archive:
+      config: Release

@@ -1,0 +1,6 @@
+.DS_Store
+TrafficMonitor/.build/
+TrafficMonitor/DerivedData/
+TrafficMonitor/DerivedDataTest/
+TrafficMonitor/TrafficMonitor.xcodeproj/xcuserdata/
+reference-ITraffic/
