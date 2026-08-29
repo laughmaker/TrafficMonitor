@@ -72,8 +72,6 @@ open TrafficMonitor.xcodeproj
 
 历史数据保存在 `~/Library/Application Support/TrafficMonitor/traffic.sqlite`，应用不会将流量数据上传到服务器。
 
-TrafficMonitor 当前使用 macOS `nettop` 获取进程级流量。在代理、VPN 和辅助进程场景中，逐 App 归属是近似值，不应视为运营商账单级计量。
-
 ## License
 
 [MIT](LICENSE)
