@@ -2,6 +2,16 @@
 
 TrafficMonitor 是一款原生 macOS 菜单栏流量监控应用，提供实时上下行速率、应用流量归属、历史趋势、配额预警和网络质量检测。所有统计数据均保存在本机。
 
+## 下载与安装
+
+[**前往 Releases 下载最新 DMG**](https://github.com/3241288994/TrafficMonitor/releases/latest)
+
+1. 下载并打开 `TrafficMonitor-0.9.2.dmg`。
+2. 将 `TrafficMonitor.app` 拖入 `Applications` 文件夹。
+3. 首次启动时，请右键点击应用并选择“打开”。
+
+Release 同时提供 SHA-256 校验文件。当前安装包使用临时签名，未经 Apple 公证；源码、构建配置和发布版本完全公开。
+
 ## 界面预览
 
 ### 网络用量概览
