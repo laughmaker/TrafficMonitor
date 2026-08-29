@@ -2,6 +2,38 @@
 
 TrafficMonitor 是一款原生 macOS 菜单栏流量监控应用，提供实时上下行速率、应用流量归属、历史趋势、配额预警和网络质量检测。所有统计数据均保存在本机。
 
+## 界面预览
+
+### 网络用量概览
+
+一屏查看今日、本周、本月用量，当前速率、异常上传和实时趋势。
+
+![TrafficMonitor 网络用量概览](docs/images/overview.jpeg)
+
+### 应用流量
+
+按本日、本周或本月查看应用排名，分别展示下载、上传和总流量。
+
+![TrafficMonitor 应用流量排名](docs/images/applications.jpeg)
+
+### 历史与分析
+
+支持预设或自定义时间范围、多种聚合粒度、趋势图、星期 × 小时热力图与 CSV/JSON 导出。
+
+![TrafficMonitor 历史与分析](docs/images/history.jpeg)
+
+### 网络质量
+
+持续检查互联网延迟、丢包、DNS、Wi-Fi 信号，并记录下载测速和断网事件。
+
+![TrafficMonitor 网络质量](docs/images/network-quality.jpeg)
+
+### 本地化设置
+
+可切换统计口径和菜单栏内容，配置日、周、账单周期及独立 Wi-Fi 配额。
+
+![TrafficMonitor 设置](docs/images/settings.jpeg)
+
 ## 功能
 
 - 菜单栏实时上传、下载速率
