@@ -8,6 +8,45 @@ struct ProxyRoutingDashboard: View {
     @ObservedObject var store: TrafficMonitorStore
     @State private var filter: RoutingFilter = .all
     @State private var searchText = ""
+    @State private var preset: RoutingPreset = .today
+    @State private var customStart = Calendar.current.date(byAdding: .day, value: -6, to: Date()) ?? Date()
+    @State private var customEnd = Date()
+    @State private var aggregation: TrafficAggregation = .hour
+
+    enum RoutingPreset: String, CaseIterable, Identifiable {
+        case today = "今天"
+        case sevenDays = "7 天"
+        case thirtyDays = "30 天"
+        case thisMonth = "本月"
+        case lastMonth = "上月"
+        case custom = "自定义"
+        var id: String { rawValue }
+    }
+
+    private var range: DateInterval {
+        let calendar = Calendar.current
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
+        switch preset {
+        case .today:
+            return DateInterval(start: today, end: now)
+        case .sevenDays:
+            return DateInterval(start: calendar.date(byAdding: .day, value: -6, to: today) ?? today, end: now)
+        case .thirtyDays:
+            return DateInterval(start: calendar.date(byAdding: .day, value: -29, to: today) ?? today, end: now)
+        case .thisMonth:
+            return DateInterval(start: calendar.dateInterval(of: .month, for: now)?.start ?? today, end: now)
+        case .lastMonth:
+            let thisMonth = calendar.dateInterval(of: .month, for: now)?.start ?? today
+            let start = calendar.date(byAdding: .month, value: -1, to: thisMonth) ?? thisMonth
+            return DateInterval(start: start, end: thisMonth)
+        case .custom:
+            let start = calendar.startOfDay(for: min(customStart, customEnd))
+            let endDay = calendar.startOfDay(for: max(customStart, customEnd))
+            let exclusiveEnd = calendar.date(byAdding: .day, value: 1, to: endDay) ?? now
+            return DateInterval(start: start, end: min(exclusiveEnd, now))
+        }
+    }
 
     enum RoutingFilter: String, CaseIterable, Identifiable {
         case all, proxied, direct
@@ -46,6 +85,9 @@ struct ProxyRoutingDashboard: View {
                 } else {
                     summaryCards
                     accountingNote
+                    rangeControls
+                    historyChart
+                    historyTargetsTable
                     splitChart
                     if !snapshot.entries.isEmpty {
                         routingTable
@@ -57,6 +99,21 @@ struct ProxyRoutingDashboard: View {
         }
         .background(DashboardBackground())
         .navigationTitle("代理")
+        .task { await reloadHistory() }
+        .onChange(of: preset) { _, _ in Task { await reloadHistory() } }
+        .onChange(of: aggregation) { _, _ in Task { await reloadHistory() } }
+        .onChange(of: customStart) { _, _ in if preset == .custom { Task { await reloadHistory() } } }
+        .onChange(of: customEnd) { _, _ in if preset == .custom { Task { await reloadHistory() } } }
+    }
+
+    private func reloadHistory() async {
+        await store.loadProxyHistory(from: range.start, to: range.end, aggregation: aggregation)
+    }
+
+    private var rangeLabel: String {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        return "\(f.string(from: range.start)) – \(f.string(from: range.end))"
     }
 
     private var header: some View {
@@ -133,10 +190,142 @@ struct ProxyRoutingDashboard: View {
     }
 
     private var accountingNote: some View {
-        Text("说明：「Clash 累计总量」是 Clash 自启动以来的总流量（与概览历史统计同量级）；「当前活跃连接」只统计此刻仍打开的连接，连接关闭后会释放，因此数值远小于累计总量。下方按目标域名列出的是活跃连接的实时走向。")
+        Text("说明：「Clash 累计总量」是 Clash 自启动以来的总流量（与概览历史统计同量级）；「当前活跃连接」只统计此刻仍打开的连接，连接关闭后会释放，因此数值远小于累计总量。下方的范围统计基于本机按时间采样的代理流量记录。")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // MARK: - 范围统计（按时间段 + 聚合）
+
+    private var rangeControls: some View {
+        ProxyCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("范围", selection: $preset) {
+                    ForEach(RoutingPreset.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+
+                HStack {
+                    if preset == .custom {
+                        DatePicker("开始", selection: $customStart, displayedComponents: .date)
+                        DatePicker("结束", selection: $customEnd, displayedComponents: .date)
+                    } else {
+                        Text(rangeLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Picker("聚合", selection: $aggregation) {
+                        Text("分钟").tag(TrafficAggregation.minute)
+                        Text("小时").tag(TrafficAggregation.hour)
+                        Text("每天").tag(TrafficAggregation.day)
+                        Text("每月").tag(TrafficAggregation.month)
+                    }
+                    .pickerStyle(.menu)
+                    .frame(minWidth: 120)
+                }
+            }
+        }
+    }
+
+    private var rangeTotal: Int64 {
+        store.proxyHistoryPoints.reduce(0) { $0 + $1.totalBytes }
+    }
+
+    private var historyChart: some View {
+        ProxyCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("区间流量").font(.headline)
+                    Spacer()
+                    Text("合计 \(TrafficByteFormatter.string(fromByteCount: rangeTotal))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if store.proxyHistoryPoints.isEmpty {
+                    ContentUnavailableView(
+                        "该区间暂无数据",
+                        systemImage: "chart.xyaxis.line",
+                        description: Text("代理分流数据从本版本开始按分钟采样记录，稍后即有数据。")
+                    )
+                    .frame(height: 160)
+                } else {
+                    Chart(store.proxyHistoryPoints) { point in
+                        AreaMark(
+                            x: .value("时间", point.start),
+                            y: .value("总流量", point.totalBytes)
+                        )
+                        .foregroundStyle(.purple.opacity(0.12))
+                        .interpolationMethod(.monotone)
+                        LineMark(
+                            x: .value("时间", point.start),
+                            y: .value("上传", point.uploadBytes)
+                        )
+                        .foregroundStyle(.orange)
+                        .interpolationMethod(.monotone)
+                        LineMark(
+                            x: .value("时间", point.start),
+                            y: .value("下载", point.downloadBytes)
+                        )
+                        .foregroundStyle(.blue)
+                        .interpolationMethod(.monotone)
+                    }
+                    .chartYAxis {
+                        AxisMarks(position: .leading) { value in
+                            AxisGridLine().foregroundStyle(.secondary.opacity(0.15))
+                            AxisValueLabel {
+                                if let bytes = value.as(Int64.self) {
+                                    Text(TrafficByteFormatter.string(fromByteCount: bytes))
+                                }
+                            }
+                        }
+                    }
+                    .frame(height: 200)
+                }
+            }
+        }
+    }
+
+    private var historyTargetsTable: some View {
+        Group {
+            if !store.proxyHistoryTargets.isEmpty {
+                ProxyCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("区间内按目标").font(.headline)
+                        HStack {
+                            Text("目标").font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Text("走向").font(.caption).foregroundStyle(.secondary).frame(width: 70, alignment: .leading)
+                            Text("上传").font(.caption).foregroundStyle(.secondary).frame(width: 90, alignment: .trailing)
+                            Text("下载").font(.caption).foregroundStyle(.secondary).frame(width: 90, alignment: .trailing)
+                            Text("合计").font(.caption).foregroundStyle(.secondary).frame(width: 90, alignment: .trailing)
+                        }
+                        Divider()
+                        ForEach(Array(store.proxyHistoryTargets.prefix(20).enumerated()), id: \.offset) { _, item in
+                            HStack(spacing: 8) {
+                                Image(systemName: item.isDirect ? "arrow.right.circle.fill" : "shield.lefthalf.filled")
+                                    .foregroundStyle(item.isDirect ? .green : .purple)
+                                Text(item.target).font(.callout).lineLimit(1).truncationMode(.middle)
+                                Spacer()
+                                Text(item.isDirect ? "直连" : "代理")
+                                    .font(.caption)
+                                    .foregroundStyle(item.isDirect ? .green : .secondary)
+                                    .frame(width: 70, alignment: .leading)
+                                Text(TrafficByteFormatter.string(fromByteCount: item.upload))
+                                    .font(.caption.monospacedDigit()).frame(width: 90, alignment: .trailing)
+                                Text(TrafficByteFormatter.string(fromByteCount: item.download))
+                                    .font(.caption.monospacedDigit()).frame(width: 90, alignment: .trailing)
+                                Text(TrafficByteFormatter.string(fromByteCount: item.upload + item.download))
+                                    .font(.caption.monospacedDigit()).frame(width: 90, alignment: .trailing)
+                            }
+                            .padding(.vertical, 3)
+                            Divider().opacity(0.4)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private func percentText(_ bytes: Int64) -> String {

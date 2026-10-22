@@ -112,6 +112,44 @@ final class ClashRoutingClient: @unchecked Sendable {
 
     // MARK: - HTTP over unix socket（极简实现，避免引入依赖）
 
+    /// 原始连接累计字节明细：connectionID -> (target, isDirect, 累计 up, 累计 down)。
+    /// 供上层做「本次快照 - 上次快照」增量后写入历史库。
+    struct RawConnection: Sendable {
+        let id: String
+        let target: String
+        let isDirect: Bool
+        let upload: Int64
+        let download: Int64
+    }
+
+    func fetchRawConnections() -> [RawConnection]? {
+        guard let path = socketPath ?? probeSocket() else { return nil }
+        do {
+            let data = try request(path: path, endpoint: "/connections")
+            guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let connections = root["connections"] as? [[String: Any]]
+            else { return [] }
+            return connections.compactMap { conn in
+                let metadata = conn["metadata"] as? [String: Any] ?? [:]
+                let host = (metadata["host"] as? String)?.trimmingCharacters(in: .whitespaces)
+                let destIP = metadata["destinationIP"] as? String
+                let target = (host?.isEmpty == false ? host! : (destIP?.isEmpty == false ? destIP! : "未知目标"))
+                guard let id = conn["id"] as? String else { return nil }
+                let chains = conn["chains"] as? [String] ?? []
+                let isDirect = chains.isEmpty || chains == ["DIRECT"]
+                return RawConnection(
+                    id: id,
+                    target: target,
+                    isDirect: isDirect,
+                    upload: (conn["upload"] as? NSNumber)?.int64Value ?? 0,
+                    download: (conn["download"] as? NSNumber)?.int64Value ?? 0
+                )
+            }
+        } catch {
+            return nil
+        }
+    }
+
     private func request(path: String, endpoint: String) throws -> Data {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw ClashRoutingError.socketFailed(errno) }

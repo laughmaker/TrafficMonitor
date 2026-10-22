@@ -76,6 +76,23 @@ public actor TrafficDatabase {
             "CREATE INDEX IF NOT EXISTS idx_traffic_buckets_time ON traffic_buckets(bucket_start)",
             on: database
         )
+        try Self.execute(
+            """
+            CREATE TABLE IF NOT EXISTS proxy_routing_buckets (
+                bucket_start INTEGER NOT NULL,
+                target TEXT NOT NULL,
+                is_direct INTEGER NOT NULL DEFAULT 0,
+                upload_bytes INTEGER NOT NULL DEFAULT 0,
+                download_bytes INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (bucket_start, target, is_direct)
+            )
+            """,
+            on: database
+        )
+        try Self.execute(
+            "CREATE INDEX IF NOT EXISTS idx_proxy_routing_time ON proxy_routing_buckets(bucket_start)",
+            on: database
+        )
     }
 
     public func record(_ snapshot: TrafficSnapshot, networkKey: String = "") throws {
@@ -397,7 +414,108 @@ public actor TrafficDatabase {
 
     public func reset() throws {
         try execute("DELETE FROM traffic_buckets")
+        try execute("DELETE FROM proxy_routing_buckets")
         try execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    }
+
+    /// 记录一批代理分流的增量（按目标域名 + 是否直连），按分钟聚合写入。
+    public func recordProxyRouting(_ records: [ProxyRoutingRecord], at timestamp: Date = Date()) throws {
+        let active = records.filter { $0.uploadBytes > 0 || $0.downloadBytes > 0 }
+        guard !active.isEmpty else { return }
+        let bucketStart = Int64(timestamp.timeIntervalSince1970 / 60) * 60
+        let sql =
+            """
+            INSERT INTO proxy_routing_buckets
+                (bucket_start, target, is_direct, upload_bytes, download_bytes)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(bucket_start, target, is_direct) DO UPDATE SET
+                upload_bytes = upload_bytes + excluded.upload_bytes,
+                download_bytes = download_bytes + excluded.download_bytes
+            """
+        try execute("BEGIN IMMEDIATE TRANSACTION")
+        do {
+            let statement = try prepare(sql)
+            defer { sqlite3_finalize(statement) }
+            for record in active {
+                sqlite3_reset(statement)
+                sqlite3_clear_bindings(statement)
+                sqlite3_bind_int64(statement, 1, bucketStart)
+                sqlite3_bind_text(statement, 2, record.target, -1, Self.transient)
+                sqlite3_bind_int(statement, 3, record.isDirect ? 1 : 0)
+                sqlite3_bind_int64(statement, 4, record.uploadBytes)
+                sqlite3_bind_int64(statement, 5, record.downloadBytes)
+                try step(statement, sql: sql)
+            }
+            try execute("COMMIT")
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
+    }
+
+    /// 按时间范围 + 聚合粒度返回代理分流的流量曲线。
+    public func proxyRoutingHistory(
+        from start: Date,
+        to end: Date,
+        aggregation: TrafficAggregation
+    ) throws -> [ProxyRoutingHistoryPoint] {
+        let sql =
+            """
+            SELECT bucket_start, SUM(upload_bytes), SUM(download_bytes)
+            FROM proxy_routing_buckets
+            WHERE bucket_start >= ? AND bucket_start < ?
+            GROUP BY bucket_start
+            ORDER BY bucket_start ASC
+            """
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int64(statement, 1, Int64(start.timeIntervalSince1970))
+        sqlite3_bind_int64(statement, 2, Int64(end.timeIntervalSince1970))
+
+        var totals: [Date: (up: Int64, down: Int64)] = [:]
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let timestamp = Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(statement, 0)))
+            let grouped = aggregationStart(for: timestamp, aggregation: aggregation)
+            let current = totals[grouped] ?? (0, 0)
+            totals[grouped] = (
+                current.up + sqlite3_column_int64(statement, 1),
+                current.down + sqlite3_column_int64(statement, 2)
+            )
+        }
+        return totals.keys.sorted().map { date in
+            let value = totals[date] ?? (0, 0)
+            return ProxyRoutingHistoryPoint(start: date, uploadBytes: value.up, downloadBytes: value.down)
+        }
+    }
+
+    /// 按目标域名汇总区间内「走代理 / 直连」的流量。
+    public func proxyRoutingTargets(
+        from start: Date,
+        to end: Date
+    ) throws -> [(target: String, isDirect: Bool, upload: Int64, download: Int64)] {
+        let sql =
+            """
+            SELECT target, is_direct, SUM(upload_bytes), SUM(download_bytes)
+            FROM proxy_routing_buckets
+            WHERE bucket_start >= ? AND bucket_start < ?
+            GROUP BY target, is_direct
+            ORDER BY SUM(upload_bytes + download_bytes) DESC
+            LIMIT 200
+            """
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int64(statement, 1, Int64(start.timeIntervalSince1970))
+        sqlite3_bind_int64(statement, 2, Int64(end.timeIntervalSince1970))
+        var results: [(String, Bool, Int64, Int64)] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            results.append((
+                string(statement, column: 0),
+                sqlite3_column_int(statement, 1) == 1,
+                sqlite3_column_int64(statement, 2),
+                sqlite3_column_int64(statement, 3)
+            ))
+        }
+        return results.map { (target: $0.0, isDirect: $0.1, upload: $0.2, download: $0.3) }
     }
 
     public func networkKeys() throws -> [String] {
