@@ -443,8 +443,18 @@ public actor TrafficDatabase {
         while sqlite3_step(statement) == SQLITE_ROW {
             let today = sqlite3_column_int64(statement, 2)
             let average = sqlite3_column_int64(statement, 3) / dayCount
-            let minimum = max(Int64(10 * 1_024 * 1_024), average * 3)
-            guard today >= minimum, today >= 100 * 1_024 * 1_024 || average > 0 else { continue }
+            let megabytes = Int64(1_024 * 1_024)
+            // 异常判定（必须同时满足）：
+            //  1) 今日上传至少 10 MB，过滤极小流量噪音；
+            //  2) 若存在历史基线：今日 >= 基线日均的 3 倍；
+            //     若历史无数据（average == 0）：今日需达到 100 MB 才视为异常，
+            //     避免"没有基线"时把任意上传都误判为异常。
+            guard today >= 10 * megabytes else { continue }
+            if average > 0 {
+                guard today >= average * 3 else { continue }
+            } else {
+                guard today >= 100 * megabytes else { continue }
+            }
             results.append(
                 UploadAnomaly(
                     appKey: string(statement, column: 0),
