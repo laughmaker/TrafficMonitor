@@ -12,6 +12,7 @@ struct ProxyRoutingDashboard: View {
     @State private var customStart = Calendar.current.date(byAdding: .day, value: -6, to: Date()) ?? Date()
     @State private var customEnd = Date()
     @State private var aggregation: TrafficAggregation = .hour
+    @State private var groupByService = true
 
     enum RoutingPreset: String, CaseIterable, Identifiable {
         case today = "今天"
@@ -83,15 +84,11 @@ struct ProxyRoutingDashboard: View {
                 if !snapshot.isAvailable {
                     unavailableCard
                 } else {
+                    rangeControls
                     summaryCards
                     accountingNote
-                    rangeControls
                     historyChart
                     historyTargetsTable
-                    splitChart
-                    if !snapshot.entries.isEmpty {
-                        routingTable
-                    }
                 }
             }
             .padding(24)
@@ -163,34 +160,56 @@ struct ProxyRoutingDashboard: View {
     private var summaryCards: some View {
         HStack(spacing: 12) {
             ProxyMetric(
-                title: "Clash 累计总量",
-                value: TrafficByteFormatter.string(fromByteCount: snapshot.cumulativeBytes),
+                title: "区间总流量",
+                value: TrafficByteFormatter.string(fromByteCount: rangeTotal),
                 tint: .blue,
-                subtitle: "自 Clash 启动以来"
+                subtitle: rangeLabelShort
             )
             ProxyMetric(
-                title: "当前活跃连接",
-                value: TrafficByteFormatter.string(fromByteCount: snapshot.totalBytes),
-                tint: .teal,
-                subtitle: "\(snapshot.entries.count) 个目标 · 实时"
-            )
-            ProxyMetric(
-                title: "活跃·走代理",
-                value: TrafficByteFormatter.string(fromByteCount: snapshot.proxiedBytes),
+                title: "区间·走代理",
+                value: TrafficByteFormatter.string(fromByteCount: rangeProxiedBytes),
                 tint: .purple,
-                subtitle: percentText(snapshot.proxiedBytes)
+                subtitle: rangePercent(rangeProxiedBytes)
             )
             ProxyMetric(
-                title: "活跃·直连",
-                value: TrafficByteFormatter.string(fromByteCount: snapshot.directBytes),
+                title: "区间·直连",
+                value: TrafficByteFormatter.string(fromByteCount: rangeDirectBytes),
                 tint: .green,
-                subtitle: percentText(snapshot.directBytes)
+                subtitle: rangePercent(rangeDirectBytes)
+            )
+            ProxyMetric(
+                title: "区间目标数",
+                value: "\(store.proxyHistoryTargets.count)",
+                tint: .orange,
+                subtitle: "去重后的目标"
             )
         }
     }
 
+    private var rangeLabelShort: String {
+        switch preset {
+        case .today: "今天"
+        case .sevenDays: "近 7 天"
+        case .thirtyDays: "近 30 天"
+        case .thisMonth: "本月"
+        case .lastMonth: "上月"
+        case .custom: "自定义区间"
+        }
+    }
+
+    private var rangeProxiedBytes: Int64 {
+        store.proxyHistoryTargets.filter { !$0.isDirect }.reduce(0) { $0 + $1.upload + $1.download }
+    }
+    private var rangeDirectBytes: Int64 {
+        store.proxyHistoryTargets.filter { $0.isDirect }.reduce(0) { $0 + $1.upload + $1.download }
+    }
+    private func rangePercent(_ bytes: Int64) -> String {
+        guard rangeTotal > 0 else { return "0%" }
+        return String(format: "%.0f%%", Double(bytes) / Double(rangeTotal) * 100)
+    }
+
     private var accountingNote: some View {
-        Text("说明：「Clash 累计总量」是 Clash 自启动以来的总流量（与概览历史统计同量级）；「当前活跃连接」只统计此刻仍打开的连接，连接关闭后会释放，因此数值远小于累计总量。下方的范围统计基于本机按时间采样的代理流量记录。")
+        Text("说明：上方所有统计均按当前选中的时间范围（今天 / 7 天 / 30 天 / 本月 / 上月 / 自定义）聚合展示。数据来自本机按时间采样的代理流量记录，仅统计本版本运行期间的数据。")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -287,43 +306,113 @@ struct ProxyRoutingDashboard: View {
         }
     }
 
+    private struct DisplayRow: Identifiable {
+        let id: String
+        let label: String
+        let isDirect: Bool
+        let upload: Int64
+        let download: Int64
+        var total: Int64 { upload + download }
+    }
+
+    private var displayRows: [DisplayRow] {
+        let raw = store.proxyHistoryTargets
+        guard groupByService else {
+            return raw.prefix(30).map {
+                DisplayRow(id: "\($0.target)|\($0.isDirect)", label: $0.target,
+                           isDirect: $0.isDirect, upload: $0.upload, download: $0.download)
+            }
+        }
+        var buckets: [String: (up: Int64, down: Int64, direct: Bool)] = [:]
+        for item in raw {
+            let service = Self.serviceName(for: item.target)
+            let key = "\(service)|\(item.isDirect)"
+            let cur = buckets[key] ?? (0, 0, item.isDirect)
+            buckets[key] = (cur.up + item.upload, cur.down + item.download, item.isDirect)
+        }
+        return buckets.map { key, v in
+            DisplayRow(id: key, label: String(key.split(separator: "|").first ?? ""),
+                       isDirect: v.direct, upload: v.up, download: v.down)
+        }
+        .sorted { $0.total > $1.total }
+        .prefix(30)
+        .map { $0 }
+    }
+
+    private static func serviceName(for target: String) -> String {
+        let lower = target.lowercased()
+        if lower.range(of: #"^\d+\.\d+\.\d+\.\d+$"#, options: .regularExpression) != nil {
+            return target
+        }
+        let knownTwoPartSuffixes = ["com.cn", "co.uk", "com.hk", "net.cn", "org.cn", "co.jp"]
+        let parts = lower.split(separator: ".").map(String.init)
+        guard parts.count >= 2 else { return lower }
+        if parts.count >= 3 {
+            let last2 = parts.suffix(2).joined(separator: ".")
+            if knownTwoPartSuffixes.contains(last2) {
+                return parts.suffix(3).joined(separator: ".")
+            }
+        }
+        return parts.suffix(2).joined(separator: ".")
+    }
+
     private var historyTargetsTable: some View {
-        Group {
-            if !store.proxyHistoryTargets.isEmpty {
-                ProxyCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("区间内按目标").font(.headline)
-                        HStack {
-                            Text("目标").font(.caption).foregroundStyle(.secondary)
+        ProxyCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    Text("区间内流量去向").font(.headline).fixedSize()
+                    Spacer(minLength: 8)
+                    Picker("分组", selection: $groupByService) {
+                        Text("按服务").tag(true)
+                        Text("按域名").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 150)
+                    .fixedSize()
+                }
+
+                if displayRows.isEmpty {
+                    Text("该区间暂无数据").font(.caption).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                } else {
+                    HStack {
+                        Text(groupByService ? "服务" : "目标").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Text("走向").font(.caption).foregroundStyle(.secondary).frame(width: 60, alignment: .leading)
+                        Text("上传").font(.caption).foregroundStyle(.secondary).frame(width: 90, alignment: .trailing)
+                        Text("下载").font(.caption).foregroundStyle(.secondary).frame(width: 90, alignment: .trailing)
+                        Text("合计").font(.caption).foregroundStyle(.secondary).frame(width: 90, alignment: .trailing)
+                    }
+                    Divider()
+                    ForEach(displayRows) { item in
+                        HStack(spacing: 8) {
+                            Image(systemName: item.isDirect ? "arrow.right.circle.fill" : "shield.lefthalf.filled")
+                                .foregroundStyle(item.isDirect ? .green : .purple)
+                            Text(item.label).font(.callout).lineLimit(1).truncationMode(.middle)
                             Spacer()
-                            Text("走向").font(.caption).foregroundStyle(.secondary).frame(width: 70, alignment: .leading)
-                            Text("上传").font(.caption).foregroundStyle(.secondary).frame(width: 90, alignment: .trailing)
-                            Text("下载").font(.caption).foregroundStyle(.secondary).frame(width: 90, alignment: .trailing)
-                            Text("合计").font(.caption).foregroundStyle(.secondary).frame(width: 90, alignment: .trailing)
+                            Text(item.isDirect ? "直连" : "代理")
+                                .font(.caption)
+                                .foregroundStyle(item.isDirect ? .green : .secondary)
+                                .frame(width: 60, alignment: .leading)
+                            Text(TrafficByteFormatter.string(fromByteCount: item.upload))
+                                .font(.caption.monospacedDigit()).frame(width: 90, alignment: .trailing)
+                            Text(TrafficByteFormatter.string(fromByteCount: item.download))
+                                .font(.caption.monospacedDigit()).frame(width: 90, alignment: .trailing)
+                            Text(TrafficByteFormatter.string(fromByteCount: item.total))
+                                .font(.caption.monospacedDigit()).frame(width: 90, alignment: .trailing)
                         }
-                        Divider()
-                        ForEach(Array(store.proxyHistoryTargets.prefix(20).enumerated()), id: \.offset) { _, item in
-                            HStack(spacing: 8) {
-                                Image(systemName: item.isDirect ? "arrow.right.circle.fill" : "shield.lefthalf.filled")
-                                    .foregroundStyle(item.isDirect ? .green : .purple)
-                                Text(item.target).font(.callout).lineLimit(1).truncationMode(.middle)
-                                Spacer()
-                                Text(item.isDirect ? "直连" : "代理")
-                                    .font(.caption)
-                                    .foregroundStyle(item.isDirect ? .green : .secondary)
-                                    .frame(width: 70, alignment: .leading)
-                                Text(TrafficByteFormatter.string(fromByteCount: item.upload))
-                                    .font(.caption.monospacedDigit()).frame(width: 90, alignment: .trailing)
-                                Text(TrafficByteFormatter.string(fromByteCount: item.download))
-                                    .font(.caption.monospacedDigit()).frame(width: 90, alignment: .trailing)
-                                Text(TrafficByteFormatter.string(fromByteCount: item.upload + item.download))
-                                    .font(.caption.monospacedDigit()).frame(width: 90, alignment: .trailing)
-                            }
-                            .padding(.vertical, 3)
-                            Divider().opacity(0.4)
-                        }
+                        .padding(.vertical, 3)
+                        Divider().opacity(0.4)
                     }
                 }
+
+                Text(groupByService
+                     ? "按服务为近似归并（同域名子主机合并，如 ab.chatgpt.com → chatgpt.com）。Clash 服务模式不提供发起进程，故无法按 App 进程精确归属。"
+                     : "按完整目标域名展示。Clash 服务模式不提供发起进程，故无法按 App 进程精确归属。")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

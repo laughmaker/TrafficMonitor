@@ -17,6 +17,9 @@ final class MenuBarStatusController: NSObject {
     private weak var store: TrafficMonitorStore?
     private var isVisible = true
 
+    /// 当前菜单栏图标是否显示（供外部判断是否需要切换）。
+    var isMenuBarVisible: Bool { isVisible }
+
     /// 是否显示菜单栏图标。隐藏后统计照常运行，可通过 Dock/主窗口继续使用。
     func setMenuBarVisible(_ visible: Bool) {
         guard isVisible != visible else { return }
