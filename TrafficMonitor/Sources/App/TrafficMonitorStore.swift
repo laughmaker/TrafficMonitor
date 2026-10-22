@@ -49,9 +49,14 @@ final class TrafficMonitorStore: ObservableObject {
     @Published private(set) var currentNetworkName = "未知网络"
     @Published private(set) var knownNetworkNames: [String] = []
     @Published private(set) var uploadAnomalies: [UploadAnomaly] = []
+    @Published private(set) var proxyRouting = ProxyRoutingSnapshot.unavailable("尚未读取", socketPath: "")
+    @Published private(set) var isRefreshingProxyRouting = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var historyErrorMessage: String?
     @Published private(set) var isRefreshingHistory = false
+
+    private let clashRoutingClient = ClashRoutingClient()
+    private var proxyRoutingTask: Task<Void, Never>?
 
     private let collector: TrafficCollector
     private let database: TrafficDatabase?
@@ -91,6 +96,7 @@ final class TrafficMonitorStore: ObservableObject {
             }
             isStarted = true
             qualityMonitor.start()
+            startProxyRoutingPolling()
             Task { await refreshHistory() }
         } catch {
             errorMessage = error.localizedDescription
@@ -101,7 +107,30 @@ final class TrafficMonitorStore: ObservableObject {
         guard isStarted else { return }
         collector.stop()
         qualityMonitor.stop()
+        proxyRoutingTask?.cancel()
+        proxyRoutingTask = nil
         isStarted = false
+    }
+
+    /// 每 10 秒从 Clash 读取一次连接分流快照。
+    private func startProxyRoutingPolling() {
+        proxyRoutingTask?.cancel()
+        proxyRoutingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshProxyRouting()
+                try? await Task.sleep(for: .seconds(10))
+            }
+        }
+    }
+
+    func refreshProxyRouting() async {
+        isRefreshingProxyRouting = true
+        defer { isRefreshingProxyRouting = false }
+        let client = clashRoutingClient
+        let snapshot = await Task.detached(priority: .utility) { () -> ProxyRoutingSnapshot in
+            client.fetchSnapshot()
+        }.value
+        proxyRouting = snapshot
     }
 
     func refreshHistory() async {

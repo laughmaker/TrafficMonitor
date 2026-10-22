@@ -6,6 +6,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
     case overview
     case history
     case apps
+    case routing
     case network
     case settings
 
@@ -16,6 +17,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
         case .overview: "概览"
         case .history: "历史"
         case .apps: "应用"
+        case .routing: "代理分流"
         case .network: "网络"
         case .settings: "设置"
         }
@@ -26,6 +28,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
         case .overview: "chart.xyaxis.line"
         case .history: "calendar"
         case .apps: "square.grid.2x2"
+        case .routing: "arrow.triangle.branch"
         case .network: "network"
         case .settings: "gearshape"
         }
@@ -34,6 +37,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
 
 struct DashboardView: View {
     @ObservedObject var store: TrafficMonitorStore
+    var statusBarController: MenuBarStatusController?
     @State private var selection: DashboardSection? = .overview
 
     var body: some View {
@@ -56,8 +60,10 @@ struct DashboardView: View {
                     NetworkQualityDashboard(monitor: store.qualityMonitor)
                 case .apps:
                     AppsDashboard(store: store)
+                case .routing:
+                    ProxyRoutingDashboard(store: store)
                 case .settings:
-                    SettingsDashboard(store: store)
+                    SettingsDashboard(store: store, menuBarController: statusBarController)
                 }
             }
             .toolbar {
@@ -816,6 +822,7 @@ private struct AppUsageRow: View {
 
 private struct SettingsDashboard: View {
     @ObservedObject var store: TrafficMonitorStore
+    var menuBarController: MenuBarStatusController?
     @State private var showResetConfirmation = false
     @AppStorage(PreferenceKey.menuBarDisplayMode) private var menuBarMode = MenuBarDisplayMode.liveRate.rawValue
     @AppStorage(PreferenceKey.dailyQuotaBytes) private var dailyQuotaGB = 0.0
@@ -825,6 +832,7 @@ private struct SettingsDashboard: View {
     @AppStorage(PreferenceKey.quotaWarningPercent) private var warningPercent = 80.0
     @AppStorage(PreferenceKey.quotaAlertsEnabled) private var quotaAlertsEnabled = false
     @AppStorage(PreferenceKey.showDockIcon) private var showInDock = true
+    @AppStorage(PreferenceKey.showMenuBarIcon) private var showMenuBarIcon = true
     @State private var currentNetworkQuotaGB = 0.0
     private let bytesPerGB = 1_073_741_824.0
 
@@ -859,7 +867,12 @@ private struct SettingsDashboard: View {
                     .onChange(of: showInDock) { _, _ in
                         TrafficMonitorAppDelegate.applyDockIconPreference()
                     }
-                Text("实时模式以两行分别显示下载和上传；也可以显示今日、本月或配额剩余。关闭 Dock 图标后仅在菜单栏常驻。")
+
+                Toggle("显示菜单栏图标", isOn: $showMenuBarIcon)
+                    .onChange(of: showMenuBarIcon) { _, visible in
+                        menuBarController?.setMenuBarVisible(visible)
+                    }
+                Text("实时模式以两行分别显示下载和上传；也可以显示今日、本月或配额剩余。关闭后统计仍会在后台运行，可通过 Dock 或此窗口查看。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

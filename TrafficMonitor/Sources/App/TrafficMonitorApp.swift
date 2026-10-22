@@ -23,7 +23,7 @@ private struct DashboardSceneRoot: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        DashboardView(store: store)
+        DashboardView(store: store, statusBarController: statusBarController)
             .frame(minWidth: 860, minHeight: 600)
             .onAppear {
                 store.start()
@@ -47,6 +47,21 @@ final class TrafficMonitorAppDelegate: NSObject, NSApplicationDelegate {
 
         store.start()
         statusBarController.install(store: store)
+
+        // 监听偏好变化：Dock 图标 / 菜单栏图标开关即时生效。
+        NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                Self.applyDockIconPreference()
+                let showMenuBar = UserDefaults.standard
+                    .object(forKey: PreferenceKey.showMenuBarIcon) as? Bool ?? true
+                self.statusBarController.setMenuBarVisible(showMenuBar)
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
