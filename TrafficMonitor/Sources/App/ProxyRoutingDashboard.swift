@@ -45,6 +45,7 @@ struct ProxyRoutingDashboard: View {
                     unavailableCard
                 } else {
                     summaryCards
+                    accountingNote
                     splitChart
                     if !snapshot.entries.isEmpty {
                         routingTable
@@ -52,15 +53,16 @@ struct ProxyRoutingDashboard: View {
                 }
             }
             .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(DashboardBackground())
-        .navigationTitle("代理分流")
+        .navigationTitle("代理")
     }
 
     private var header: some View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("代理分流")
+                Text("代理")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                 Text("基于 Clash 连接的真实出站走向：哪些目标走代理、哪些直连")
                     .font(.subheadline)
@@ -104,28 +106,37 @@ struct ProxyRoutingDashboard: View {
     private var summaryCards: some View {
         HStack(spacing: 12) {
             ProxyMetric(
-                title: "总流量",
-                value: TrafficByteFormatter.string(fromByteCount: snapshot.totalBytes),
-                tint: .blue
+                title: "Clash 累计总量",
+                value: TrafficByteFormatter.string(fromByteCount: snapshot.cumulativeBytes),
+                tint: .blue,
+                subtitle: "自 Clash 启动以来"
             )
             ProxyMetric(
-                title: "走代理",
+                title: "当前活跃连接",
+                value: TrafficByteFormatter.string(fromByteCount: snapshot.totalBytes),
+                tint: .teal,
+                subtitle: "\(snapshot.entries.count) 个目标 · 实时"
+            )
+            ProxyMetric(
+                title: "活跃·走代理",
                 value: TrafficByteFormatter.string(fromByteCount: snapshot.proxiedBytes),
                 tint: .purple,
                 subtitle: percentText(snapshot.proxiedBytes)
             )
             ProxyMetric(
-                title: "直连",
+                title: "活跃·直连",
                 value: TrafficByteFormatter.string(fromByteCount: snapshot.directBytes),
                 tint: .green,
                 subtitle: percentText(snapshot.directBytes)
             )
-            ProxyMetric(
-                title: "目标数",
-                value: "\(snapshot.entries.count)",
-                tint: .orange
-            )
         }
+    }
+
+    private var accountingNote: some View {
+        Text("说明：「Clash 累计总量」是 Clash 自启动以来的总流量（与概览历史统计同量级）；「当前活跃连接」只统计此刻仍打开的连接，连接关闭后会释放，因此数值远小于累计总量。下方按目标域名列出的是活跃连接的实时走向。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func percentText(_ bytes: Int64) -> String {
@@ -168,17 +179,20 @@ struct ProxyRoutingDashboard: View {
     private var routingTable: some View {
         ProxyCard {
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("按目标域名").font(.headline)
-                    Spacer()
+                HStack(spacing: 12) {
+                    Text("按目标域名").font(.headline).fixedSize()
+                    Spacer(minLength: 8)
                     Picker("筛选", selection: $filter) {
                         ForEach(RoutingFilter.allCases) { Text($0.title).tag($0) }
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 200)
+                    .labelsHidden()
+                    .frame(width: 190)
+                    .fixedSize()
                     TextField("搜索域名", text: $searchText)
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 180)
+                        .frame(width: 160)
+                        .fixedSize()
                 }
 
                 HStack {

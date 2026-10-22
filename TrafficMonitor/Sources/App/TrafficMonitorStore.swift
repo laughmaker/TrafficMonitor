@@ -51,6 +51,8 @@ final class TrafficMonitorStore: ObservableObject {
     @Published private(set) var uploadAnomalies: [UploadAnomaly] = []
     @Published private(set) var proxyRouting = ProxyRoutingSnapshot.unavailable("尚未读取", socketPath: "")
     @Published private(set) var isRefreshingProxyRouting = false
+    /// 是否检测到本机 Clash/mihomo 可用；未安装或未运行时用于隐藏「代理分流」入口。
+    @Published private(set) var isClashAvailable = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var historyErrorMessage: String?
     @Published private(set) var isRefreshingHistory = false
@@ -131,6 +133,7 @@ final class TrafficMonitorStore: ObservableObject {
             client.fetchSnapshot()
         }.value
         proxyRouting = snapshot
+        isClashAvailable = snapshot.isAvailable
     }
 
     func refreshHistory() async {

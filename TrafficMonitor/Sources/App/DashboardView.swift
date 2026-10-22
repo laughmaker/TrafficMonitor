@@ -17,7 +17,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
         case .overview: "概览"
         case .history: "历史"
         case .apps: "应用"
-        case .routing: "代理分流"
+        case .routing: "代理"
         case .network: "网络"
         case .settings: "设置"
         }
@@ -40,11 +40,25 @@ struct DashboardView: View {
     var statusBarController: MenuBarStatusController?
     @State private var selection: DashboardSection? = .overview
 
+    /// 未检测到本机 Clash/mihomo 时隐藏「代理分流」入口。
+    private var visibleSections: [DashboardSection] {
+        DashboardSection.allCases.filter { section in
+            section != .routing || store.isClashAvailable
+        }
+    }
+
     var body: some View {
         NavigationSplitView {
-            List(DashboardSection.allCases, selection: $selection) { section in
-                Label(section.title, systemImage: section.icon)
-                    .tag(section)
+            List(visibleSections, selection: $selection) { section in
+                Label {
+                    Text(section.title)
+                } icon: {
+                    Image(systemName: section.icon)
+                        .imageScale(.medium)
+                }
+                .labelStyle(.titleAndIcon)
+                .frame(maxHeight: .infinity, alignment: .center)
+                .tag(section)
             }
             .listStyle(.sidebar)
             .navigationTitle("流量监控")
@@ -66,6 +80,7 @@ struct DashboardView: View {
                     SettingsDashboard(store: store, menuBarController: statusBarController)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     HStack(spacing: 16) {
@@ -111,6 +126,11 @@ struct DashboardView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .onChange(of: store.isClashAvailable) { _, available in
+            if !available, selection == .routing {
+                selection = .overview
+            }
+        }
     }
 }
 
@@ -205,7 +225,7 @@ private struct MetricCard: View {
 
     var body: some View {
         DashboardCard {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(tint)

@@ -29,6 +29,9 @@ struct ProxyRoutingSnapshot: Sendable {
         entries.reduce(0) { $0 + $1.totalBytes }
     }
 
+    /// Clash 自启动以来的累计总量（与历史统计同量级，非活动连接）。
+    var cumulativeBytes: Int64 { uploadTotal + downloadTotal }
+
     var directBytes: Int64 {
         entries.filter(\.isDirect).reduce(0) { $0 + $1.totalBytes }
     }
