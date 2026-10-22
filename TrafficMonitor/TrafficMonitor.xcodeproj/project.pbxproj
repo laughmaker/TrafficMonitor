@@ -36,6 +36,7 @@
 		EC7ADE2DED470AC7F95BE2D0 /* MenuBarStatusController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA8DE181C8668E0D55E1F5C3 /* MenuBarStatusController.swift */; };
 		FB3DB258A5DF102AF79DC6FD /* NettopFrameParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE024EBA17EDA587752F05E3 /* NettopFrameParser.swift */; };
 		FED4D9827B6E52E0DB01B2D5 /* TrafficMonitorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90F090AD06C6CCC79115E238 /* TrafficMonitorApp.swift */; };
+		FFC78406950673C789E1D022 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4F94664854D29E6ABDB5B334 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -89,6 +90,7 @@
 		3CCE10C57056511330B59EB1 /* NetworkProfileDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkProfileDetector.swift; sourceTree = "<group>"; };
 		42F30955453568A94D645160 /* NetworkQualityDashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkQualityDashboard.swift; sourceTree = "<group>"; };
 		491F2F21F70D8F90BF6A0926 /* QuotaNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaNotifications.swift; sourceTree = "<group>"; };
+		4F94664854D29E6ABDB5B334 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		51DD7223F1CA0B2B4FA8E5AB /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		559591571A216AD958BB9BEE /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		6ADDDDEEF31FB2ABA89B742D /* NettopFrameParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NettopFrameParserTests.swift; sourceTree = "<group>"; };
@@ -196,6 +198,7 @@
 			children = (
 				7C4285BA4145DC2DCF0EE0F8 /* AppIconView.swift */,
 				19E042F421FFCEEF810D437F /* AppPreferences.swift */,
+				4F94664854D29E6ABDB5B334 /* Assets.xcassets */,
 				85579CC0BEB2CAC8A0E33759 /* ChartTooltip.swift */,
 				559591571A216AD958BB9BEE /* DashboardView.swift */,
 				29F282C0F9F0E1F8BE87F1E8 /* HistoryDashboard.swift */,
@@ -275,6 +278,7 @@
 			buildConfigurationList = 154D38E408B1543D28B641CE /* Build configuration list for PBXNativeTarget "TrafficMonitor" */;
 			buildPhases = (
 				E366A47FD3ECE051642B2CE3 /* Sources */,
+				1E899657CEBE49195F64CF7A /* Resources */,
 				9AF5DCF89B06D94E43C8C2E0 /* Frameworks */,
 				397205DDEC77FD91DE605E16 /* Embed Frameworks */,
 			);
@@ -324,6 +328,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1E899657CEBE49195F64CF7A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FFC78406950673C789E1D022 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		026CFEF8637D478882887F59 /* Sources */ = {
